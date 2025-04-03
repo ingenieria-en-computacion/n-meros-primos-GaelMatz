@@ -1,0 +1,92 @@
+section .bss
+    buffer resb 10   ; Reservar 10 bytes para almacenar el número ingresado
+    result resb 10   ; Espacio para el resultado convertido (máximo 10 dígitos)
+
+section .text
+    global _start
+
+_start:
+    ; Leer la entrada del usuario (máximo 10 caracteres)
+    mov eax, 3       ; syscall: sys_read
+    mov ebx, 0       ; file descriptor: STDIN (0)
+    mov ecx, buffer  ; Dirección del buffer donde se almacenará el número
+    mov edx, 10      ; Tamaño máximo a leer
+    int 0x80         ; Llamada al sistema
+
+    ; Apilar cada carácter leído (ignorando '\n')
+    mov esi, buffer  ; Apuntador a la cadena ingresada
+
+push_loop:
+    mov al, [esi]    ; Obtener el carácter actual
+    cmp al, 10       ; Comparar con '\n' (ASCII 10)
+    je process_stack ; Si es '\n', procesamos la pila
+    cmp al, 0        ; Si es 0, terminamos
+    je process_stack
+
+    sub al, '0'      ; Convertir ASCII a número
+    push ax          ; Guardar en la pila (AX se usa para evitar relleno extra)
+    
+    inc esi          ; Avanzar al siguiente carácter
+    jmp push_loop    ; Repetir hasta que termine la entrada
+
+process_stack:
+    mov edi, result  ; Apuntar a la dirección donde guardaremos el resultado
+
+pop_loop:
+    cmp esp, buffer  ; Si la pila está vacía, terminamos
+    je check_parity  ; Saltamos a la comprobación de paridad
+
+    pop ax           ; Sacar un número de la pila
+    add al, '0'      ; Convertir de nuevo a ASCII
+    mov [edi], al    ; Guardarlo en `result`
+    
+    inc edi          ; Avanzar en el buffer de salida
+    jmp pop_loop     ; Seguir sacando números de la pila
+
+check_parity:
+    ; Comprobamos si el número es par o impar.
+    mov esi, result  ; Apuntar al primer carácter de `result`
+    mov al, [esi]    ; Obtener el primer carácter
+    sub al, '0'      ; Convertir de ASCII a número (tomamos el primer dígito)
+    
+    ; Calcular el resto de la división por 2
+    mov bl, 2        ; Divisor: 2
+    div bl           ; División de AL / 2, el residuo se almacena en AH
+    
+    cmp ah, 0        ; Si el residuo es 0, es par
+    je print_parity  ; Si el residuo es 0, es par
+    jmp print_impar  ; Si el residuo no es 0, es impar
+
+print_parity:
+    ; Imprimir "Es par\n"
+    mov eax, 4       ; syscall: sys_write
+    mov ebx, 1       ; file descriptor: STDOUT
+    mov ecx, parity  ; Dirección del mensaje "Es par"
+    mov edx, 7       ; Longitud del mensaje "Es par"
+    int 0x80         ; Llamada al sistema
+    jmp print_result ; Imprimir el número reconstruido
+
+print_impar:
+    ; Imprimir "Es impar\n"
+    mov eax, 4       ; syscall: sys_write
+    mov ebx, 1       ; file descriptor: STDOUT
+    mov ecx, impar   ; Dirección del mensaje "Es impar"
+    mov edx, 9       ; Longitud del mensaje "Es impar"
+    int 0x80         ; Llamada al sistema
+    jmp print_result ; Imprimir el número reconstruido
+
+parity db "Es par", 0xa   ; Mensaje "Es par" con salto de línea
+impar db "Es impar", 0xa   ; Mensaje "Es impar" con salto de línea
+
+print_result:
+    ; Imprimir el número reconstruido
+    mov eax, 4       ; syscall: sys_write
+    mov ebx, 1       ; file descriptor: STDOUT
+    mov ecx, result  ; Dirección del número convertido
+    mov edx, 10      ; Tamaño máximo
+    int 0x80         ; Llamada al sistema
+
+    ; Terminar el programa
+    mov eax, 1       ; syscall: sys_exit
+    xor ebx, ebx     ; Código de salida 0
+    int 0x80         ; Llamada al sistema
